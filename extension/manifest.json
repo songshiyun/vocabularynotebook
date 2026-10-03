@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "拾词 · 英文单词本",
+  "version": "1.0.0",
+  "description": "右键收藏英文单词，离线查看中文释义，通过 Chrome 账号在多台电脑间同步。",
+  "minimum_chrome_version": "120",
+  "permissions": ["contextMenus", "storage", "alarms"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "拾词 · 打开单词本",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" }
+  },
+  "icons": { "16": "icons/16.png", "32": "icons/32.png", "48": "icons/48.png", "128": "icons/128.png" },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzPonhfXn5XWtejks5HuDXjNDF5Xjwf1EDnkP5a1Ggqou9DMfTRW836nceAnQPASOP2CocNvNZLU1GqjTe6C4sbOVVvgq82D1k4CRRRwTEhHhKr8vbi8go6fzTo35FztmyIrqVp2x/iWmUL/bu1RdyWZwYI9Px3zPlvru9XuCV8tj+Hlp0vPdoLoCBIWBLnCPyVHV677fsCLdw33bGsfnPQ07JMFkGW4VVlL/TUH6em1HPblsOe7NK12ffcxHQXD5qRYPPEuhlq/BLgm8a+5ScYHKjsoxkOXkOtGZp1l4CZdzwe99YKkM1zwZhzOhuBpw0jh2DkIqk9Tmatr4kp2QdwIDAQAB"
+}

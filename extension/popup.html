@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>拾词 · 我的单词本</title>
+    <link rel="stylesheet" href="popup.css">
+    <script type="module" src="popup.js"></script>
+  </head>
+  <body>
+    <header class="header">
+      <div class="brand"><img src="icons/48.png" width="32" height="32" alt=""><div><h1>拾词<span>WORDKEEP</span></h1><p>把阅读中的生词，留在这里。</p></div></div>
+      <button id="help-toggle" class="icon-button" type="button" aria-label="使用与同步说明" title="使用与同步说明" aria-expanded="false">?</button>
+    </header>
+    <main>
+      <section id="help" class="help" hidden>
+        <strong>开始积累你的单词</strong>
+        <p>选中网页中的一个英文单词 → 右键 →「收藏到拾词」。建议将插件固定到工具栏，收藏结果会显示在图标上。</p>
+        <p>各台电脑安装同一个插件，登录相同 Google 账号，并在 Chrome 设置中开启扩展程序同步。同步时间由 Chrome 决定。</p>
+        <p>「已提交 Chrome」表示已写入本机 Chrome 同步存储，不代表其他设备已收到；断网时由 Chrome 在联网后继续同步。</p>
+        <p>释义来自内置 ECDICT 离线词库。未收录的词可手动填写；标准释义可能包含多个词性或词义。</p>
+      </section>
+      <section class="overview" aria-label="单词本概况">
+        <div><p class="eyebrow">MY VOCABULARY</p><div class="count-line"><strong id="total-count">—</strong><span>个收藏单词</span></div></div>
+        <div class="sync-overview"><span id="sync-status" class="status">正在读取</span><button id="sync-button" type="button" class="text-button">重试提交 ↻</button></div>
+      </section>
+      <div id="notice" class="notice" role="status" hidden></div>
+      <div id="error" class="error" role="alert" hidden></div>
+      <label class="search-box"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><input id="search" type="search" aria-label="搜索单词或中文释义" placeholder="搜索单词或中文释义" autocomplete="off" spellcheck="false"><kbd>/</kbd></label>
+      <div class="list-heading"><span id="list-label">全部单词</span><span>按收藏时间排列</span></div>
+      <section id="word-list" class="word-list" aria-label="收藏的单词" aria-live="polite"></section>
+      <div id="empty" class="empty" hidden><div class="empty-mark" aria-hidden="true">Aa<span>+</span></div><h2 id="empty-title">你的第一枚生词，等你拾起</h2><p id="empty-description">在网页上选中英文单词，右键收藏。<br>中文释义会自动准备好。</p></div>
+      <button id="load-more" class="load-more" type="button" hidden>显示更多</button>
+    </main>
+    <footer>
+      <div class="storage"><div class="storage-label"><span>Chrome 同步空间</span><span id="storage-label">— / 100 KB</span></div><progress id="storage-meter" max="102400" value="0" aria-label="Chrome 同步空间使用量"></progress></div>
+      <div class="footer-actions"><span>离线词典 · 英 → 中</span><button id="export-button" class="text-button" type="button">导出备份 ↓</button></div>
+    </footer>
+    <dialog id="edit-dialog">
+      <form id="edit-form">
+        <div class="dialog-heading"><div><p class="eyebrow">EDIT DEFINITION</p><h2 id="edit-word"></h2></div><button id="edit-close" type="button" class="icon-button" aria-label="关闭编辑">×</button></div>
+        <label for="definition">中文释义</label><textarea id="definition" rows="7" maxlength="1000" placeholder="填写你想记住的词义"></textarea>
+        <div class="field-hint"><span>留空保存可恢复词典释义</span><span id="character-count">0 / 1000</span></div>
+        <p id="edit-error" class="inline-error" role="alert" hidden></p>
+        <div class="dialog-actions"><button id="edit-cancel" class="secondary-button" type="button">取消</button><button id="edit-save" class="primary-button" type="submit">保存释义</button></div>
+      </form>
+    </dialog>
+    <dialog id="delete-dialog">
+      <form id="delete-form"><p class="eyebrow">REMOVE WORD</p><h2>删除 <span id="delete-word"></span>？</h2><p class="delete-description">删除也会提交到 Chrome，并同步到其他电脑。</p><p id="delete-error" class="inline-error" role="alert" hidden></p><div class="dialog-actions"><button id="delete-cancel" class="secondary-button" type="button">取消</button><button id="delete-confirm" class="danger-button" type="submit">确认删除</button></div></form>
+    </dialog>
+  </body>
+</html>

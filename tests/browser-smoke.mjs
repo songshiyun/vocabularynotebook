@@ -1,0 +1,120 @@
+import assert from "node:assert/strict";
+import { cp, mkdir, mkdtemp, readFile, writeFile, readdir } from "node:fs/promises";
+import { resolve, join } from "node:path";
+import { pathToFileURL } from "node:url";
+import { bucketFor } from "../extension/core/model.js";
+
+const modulePath = process.env.WORDKEEP_PUPPETEER;
+const puppeteer = (await import(modulePath ? pathToFileURL(resolve(modulePath)).href : "puppeteer-core")).default;
+const executablePath = process.env.WORDKEEP_BROWSER;
+if (!executablePath) throw new Error("Set WORDKEEP_BROWSER to a Chrome for Testing executable.");
+await mkdir("artifacts", { recursive: true });
+const runDirectory = await mkdtemp(resolve("artifacts/browser-"));
+const extensionPath = join(runDirectory, "extension");
+await cp("extension", extensionPath, { recursive: true });
+const backgroundPath = join(extensionPath, "background.js");
+const background = await readFile(backgroundPath, "utf8");
+const hook = 'const originalRegister = chrome.contextMenus.onClicked.addListener.bind(chrome.contextMenus.onClicked); chrome.contextMenus.onClicked.addListener = handler => { globalThis.wordkeepTestClick = handler; originalRegister(handler); };\n';
+await writeFile(backgroundPath, hook + background);
+const browser = await puppeteer.launch({ executablePath, headless: true, pipe: true, enableExtensions: [extensionPath], userDataDir: join(runDirectory, "profile"), args: ["--no-first-run", "--disable-component-update"] });
+const errors = [];
+let completed = false;
+try {
+  const target = await browser.waitForTarget(target => target.type() === "service_worker" && target.url().endsWith("/background.js"));
+  const worker = await target.worker();
+  const workerSession = await target.createCDPSession();
+  await workerSession.send("Network.enable");
+  await workerSession.send("Runtime.enable");
+  workerSession.on("Runtime.exceptionThrown", event => errors.push(event.exceptionDetails.text));
+  const extensionId = new URL(target.url()).host;
+  const page = await browser.newPage();
+  page.on("pageerror", error => errors.push(error.message));
+  await page.setViewport({ width: 410, height: 600, deviceScaleFactor: 2 });
+  await page.goto(`chrome-extension://${extensionId}/popup.html`);
+  await page.waitForFunction(() => document.querySelector("#total-count").textContent === "0");
+  await page.screenshot({ path: "artifacts/popup-empty.png" });
+  await worker.evaluate(() => new Promise((resolve, reject) => chrome.contextMenus.update("wordkeep-add", {}, () => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve())));
+  for (const word of ["resilient", "serendipity", "ephemeral", "apple"]) {
+    await worker.evaluate(selectionText => globalThis.wordkeepTestClick({ menuItemId: "wordkeep-add", selectionText }), word);
+    await page.waitForFunction(word => [...document.querySelectorAll(".word-title")].some(element => element.textContent === word), {}, word);
+  }
+  await page.waitForFunction(() => [...document.querySelectorAll(".definition")].every(element => /[\u3400-\u9fff]/.test(element.textContent)));
+  await page.screenshot({ path: "artifacts/popup-filled.png" });
+  await worker.evaluate(() => globalThis.wordkeepTestClick({ menuItemId: "wordkeep-add", selectionText: "APPLE" }));
+  await page.waitForFunction(async () => (await chrome.action.getBadgeText({})).includes("="));
+  assert.equal(await page.$eval("#total-count", element => element.textContent), "4");
+  await page.click('[aria-label="编辑 apple 的释义"]');
+  await page.$eval("#definition", element => { element.value = "苹果公司；一种水果"; element.dispatchEvent(new Event("input")); });
+  await page.click("#edit-save");
+  await page.waitForFunction(() => !document.querySelector("#edit-dialog").open && document.querySelector("#word-list").textContent.includes("苹果公司"));
+  await page.type("#search", "苹果公司");
+  await page.waitForFunction(() => document.querySelectorAll(".word").length === 1);
+  await page.$eval("#search", element => { element.value = ""; element.dispatchEvent(new Event("input")); });
+  const oldEphemeral = await worker.evaluate(async () => (await chrome.storage.local.get("notebook")).notebook.records.ephemeral);
+  await page.click('[aria-label="删除 ephemeral"]');
+  await page.click("#delete-confirm");
+  await page.waitForFunction(() => document.querySelector("#total-count").textContent === "3");
+  await worker.evaluate(async ({ key, record }) => {
+    const values = await chrome.storage.sync.get(key);
+    record[2] += 1000;
+    record[4] = "来自离线设备的旧修改";
+    await chrome.storage.sync.set({ [key]: { ...values[key], ephemeral: record } });
+  }, { key: bucketFor("ephemeral"), record: oldEphemeral });
+  await page.waitForFunction(async key => (await chrome.storage.sync.get(key))[key].ephemeral[5] === 1, {}, bucketFor("ephemeral"));
+  await page.setOfflineMode(true);
+  await workerSession.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
+  await worker.evaluate(() => globalThis.wordkeepTestClick({ menuItemId: "wordkeep-add", selectionText: "algorithm" }));
+  await page.waitForFunction(() => document.querySelector("#word-list").textContent.includes("算法"));
+  const localData = await worker.evaluate(async () => (await chrome.storage.local.get("notebook")).notebook);
+  assert.equal(localData.records.ephemeral[5], 1);
+  assert.equal(localData.records.apple[4], "苹果公司；一种水果");
+  const paddingKeys = await worker.evaluate(async () => {
+    let remaining = chrome.storage.sync.QUOTA_BYTES - await chrome.storage.sync.getBytesInUse(null);
+    const padding = {};
+    let index = 0;
+    while (remaining > 30) {
+      const key = `smoke-padding-${index++}`;
+      const length = Math.min(7500, remaining - key.length - 2);
+      padding[key] = "x".repeat(length);
+      remaining -= key.length + length + 2;
+    }
+    await chrome.storage.sync.set(padding);
+    return Object.keys(padding);
+  });
+  await worker.evaluate(() => globalThis.wordkeepTestClick({ menuItemId: "wordkeep-add", selectionText: "perseverance" }));
+  await page.waitForFunction(() => document.querySelector("#total-count").textContent === "5" && document.querySelector(".pending-label"));
+  await page.screenshot({ path: "artifacts/popup-quota.png" });
+  const session = await page.createCDPSession();
+  const downloadDirectory = join(runDirectory, "downloads");
+  await mkdir(downloadDirectory);
+  await session.send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: downloadDirectory, eventsEnabled: true });
+  const downloadComplete = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Backup download timeout")), 10000);
+    session.on("Browser.downloadProgress", event => { if (event.state === "completed") { clearTimeout(timeout); resolve(); } });
+  });
+  await page.click("#export-button");
+  await downloadComplete;
+  const [backupFile] = (await readdir(downloadDirectory)).filter(name => name.endsWith(".json"));
+  const backup = JSON.parse(await readFile(join(downloadDirectory, backupFile), "utf8"));
+  assert.equal(backup.format, "wordkeep-backup");
+  assert.equal(backup.words.length, 5);
+  assert.ok(backup.words.find(entry => entry.word === "apple").definition.includes("苹果公司"));
+  assert.equal(backup.words.find(entry => entry.word === "perseverance").pending, true);
+  await worker.evaluate(async keys => chrome.storage.sync.remove(keys), paddingKeys);
+  await page.waitForFunction(() => document.querySelector("#sync-status").textContent === "已提交 Chrome");
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector("#word-list").textContent.includes("苹果公司"));
+  assert.equal(await page.$eval("#error", element => element.hidden), true);
+  const bounds = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight, footer: document.querySelector("footer").getBoundingClientRect().bottom }));
+  assert.equal(bounds.width, 410);
+  assert.equal(bounds.height, 600);
+  assert.ok(bounds.footer <= 600);
+  assert.deepEqual(errors, []);
+  const report = { extensionId, browser: await browser.version(), checks: ["MV3 load", "context-menu registration and handler", "offline dictionary", "duplicate collection", "edit and search", "delete tombstone", "repair stale remote edit after deletion", "offline worker collection", "real Chrome quota overflow", "JSON download includes local-only words", "retry after freeing quota", "reload persistence", "410×600 layout", "no page or worker exceptions"], note: "Context-menu callback invoked synthetically; Google account cloud transport and native menu activation require manual two-device validation." };
+  await writeFile("artifacts/browser-report.json", `${JSON.stringify(report, null, 2)}\n`);
+  console.log(JSON.stringify(report, null, 2));
+  completed = true;
+} finally {
+  await browser.close();
+  if (!completed) console.error(`Browser test artifacts: ${runDirectory}`);
+}

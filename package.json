@@ -1,0 +1,14 @@
+{
+  "name": "wordkeep",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "拾词：离线英汉单词本 Chrome 插件",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "dictionary": "node scripts/build-dictionary.mjs",
+    "package": "node scripts/package.mjs"
+  },
+  "engines": { "node": ">=22" }
+}
